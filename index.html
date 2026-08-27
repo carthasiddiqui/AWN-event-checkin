@@ -1,119 +1,779 @@
-// ── AWN ATTENDANCE TRACKER ──
-// Watches awneventtracker@gmail.com for check-in CSV emails
-// and appends attendance data to the master Google Sheet.
-// Set this to run on a time trigger (every hour).
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Check-In">
+<title>Event Check-In</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f1117; --surface: #181c27; --surface2: #1e2333; --border: #2a3045;
+  --accent: #5b8dee; --green: #3fcf8e; --gold: #f0b429;
+  --text: #e8ecf4; --muted: #7a85a0;
+  --checked-bg: #0e1f17; --checked-border: #234d35;
+  --walkin-bg: #1a1800; --walkin-border: #4a3c00;
+  --danger: #e05c5c; --r: 14px; --rs: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 16px; min-height: 100vh; overscroll-behavior: none; }
 
-const SHEET_ID = '196nrbNcH-NaXnDHkSOFJilrLYk4ISue2UFQSclPtgSU';
-const EMAIL_SUBJECT = 'AWN Check-In Data';
-const PROCESSED_LABEL = 'processed';
+.screen { display: none; }
+.screen.active { display: flex; flex-direction: column; }
+#upload-screen.active { min-height: 100vh; align-items: center; justify-content: center; padding: 32px 24px; }
+#checkin-screen.active { height: 100vh; }
+#merge-screen.active { min-height: 100vh; padding: 24px; gap: 16px; }
 
-function importCheckInData() {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getActiveSheet();
+/* ── INSTALL BANNER ── */
+#install-banner {
+  display: none; background: rgba(91,141,238,0.12); border: 1.5px solid rgba(91,141,238,0.3);
+  border-radius: var(--r); padding: 14px 16px; width: 100%; max-width: 360px;
+  margin-bottom: 20px; gap: 10px; align-items: flex-start;
+}
+#install-banner.show { display: flex; }
+.install-icon { font-size: 22px; flex-shrink: 0; margin-top: 1px; }
+.install-text { flex: 1; }
+.install-text strong { font-size: 14px; color: var(--accent); display: block; margin-bottom: 3px; }
+.install-text p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.install-dismiss { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 0 0 8px; flex-shrink: 0; }
 
-  // Ensure header row exists
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow([
-      'Event Name',
-      'Event Date',
-      'First Name',
-      'Last Name',
-      'Email',
-      'Status',         // Attended, No-Show, Late Cancellation, Walk-in
-      'AWN Member',
-      'Check-In Time',
-      'Imported At'
-    ]);
-    sheet.getRange(1, 1, 1, 9).setFontWeight('bold').setBackground('#4a86e8').setFontColor('#ffffff');
-    sheet.setFrozenRows(1);
-  }
+/* ── UPLOAD ── */
+.logo-mark { width: 60px; height: 60px; background: var(--accent); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px; box-shadow: 0 8px 32px rgba(91,141,238,0.35); }
+.logo-mark svg { width: 32px; height: 32px; }
+h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; text-align: center; line-height: 1.15; margin-bottom: 8px; }
+.subtitle { color: var(--muted); font-size: 14px; text-align: center; line-height: 1.5; margin-bottom: 28px; max-width: 290px; }
 
-  // Get or create the 'processed' label
-  let processedLabel = GmailApp.getUserLabelByName(PROCESSED_LABEL);
-  if (!processedLabel) {
-    processedLabel = GmailApp.createLabel(PROCESSED_LABEL);
-  }
+.upload-zone { width: 100%; max-width: 360px; background: var(--surface); border: 2px dashed var(--border); border-radius: var(--r); padding: 32px 20px; text-align: center; cursor: pointer; position: relative; transition: border-color 0.2s, background 0.2s; }
+.upload-zone:active, .upload-zone.drag-over { background: var(--surface2); border-color: var(--accent); }
+.upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.upload-icon { font-size: 32px; margin-bottom: 10px; }
+.upload-label { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+.upload-hint { font-size: 13px; color: var(--muted); }
 
-  // Search for unprocessed AWN check-in emails
-  const threads = GmailApp.search(`subject:"${EMAIL_SUBJECT}" -label:${PROCESSED_LABEL}`);
+.btn { width: 100%; max-width: 360px; border: none; border-radius: var(--r); padding: 15px; font-family: 'DM Sans', sans-serif; font-size: 16px; font-weight: 600; cursor: pointer; transition: opacity 0.15s, transform 0.1s; display: block; }
+.btn:active { opacity: 0.82; transform: scale(0.98); }
+.btn-primary { background: var(--accent); color: #fff; margin-top: 12px; }
+.btn-secondary { background: var(--surface); color: var(--text); border: 1.5px solid var(--border); margin-top: 8px; }
+.btn-green { background: var(--green); color: #0a1f14; }
+.btn-gold { background: var(--gold); color: #1a1200; }
+.btn-danger { background: transparent; color: var(--danger); border: 1.5px solid var(--danger); }
+.btn-sm { padding: 10px 16px; font-size: 14px; width: auto; max-width: none; display: inline-block; }
 
-  if (threads.length === 0) {
-    Logger.log('No new check-in emails found.');
-    return;
-  }
+.instructions { margin-top: 24px; max-width: 360px; width: 100%; background: var(--surface); border-radius: var(--r); padding: 18px; }
+.instructions h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 10px; }
+.instructions ol { padding-left: 18px; }
+.instructions li { font-size: 13px; color: var(--muted); margin-bottom: 5px; line-height: 1.5; }
+.instructions li strong { color: var(--text); }
 
-  threads.forEach(thread => {
-    const messages = thread.getMessages();
-    messages.forEach(message => {
-      const attachments = message.getAttachments();
-      attachments.forEach(attachment => {
-        if (attachment.getName().endsWith('.csv')) {
-          const csvContent = attachment.getDataAsString();
-          const rows = parseCSV(csvContent);
+/* ── CHECK-IN ── */
+.top-bar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 14px 10px; position: sticky; top: 0; z-index: 10; }
+.top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 10px; }
+.event-title { font-family: 'DM Serif Display', serif; font-size: 19px; font-weight: 400; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.counter { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; font-size: 13px; font-weight: 600; color: var(--green); white-space: nowrap; flex-shrink: 0; }
+.progress-bar { width: 100%; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 10px; }
+.progress-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.35s ease; width: 0%; }
+.search-row { display: flex; gap: 8px; align-items: center; }
+.search-wrap { position: relative; flex: 1; }
+.search-wrap svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; width: 16px; height: 16px; }
+.search-input { width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: var(--rs); padding: 10px 12px 10px 34px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 16px; outline: none; }
+.search-input:focus { border-color: var(--accent); }
+.search-input::placeholder { color: var(--muted); }
+.filter-btn { background: var(--surface2); border: 1.5px solid var(--border); border-radius: var(--rs); padding: 10px 13px; color: var(--muted); font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer; white-space: nowrap; transition: all 0.15s; flex-shrink: 0; }
+.filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(91,141,238,0.08); }
 
-          if (rows.length < 2) return; // No data rows
+.list-container { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 6px 12px 100px; }
+.section-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); padding: 14px 4px 6px; }
 
-          const headers = rows[0].map(h => h.trim().toLowerCase());
-          const eventNameIdx   = headers.indexOf('event name');
-          const eventDateIdx   = headers.indexOf('event date');
-          const firstNameIdx   = headers.indexOf('first name');
-          const lastNameIdx    = headers.indexOf('last name');
-          const emailIdx       = headers.indexOf('email');
-          const statusIdx      = headers.indexOf('status');
-          const awnMemberIdx   = headers.indexOf('awn member');
-          const checkInTimeIdx = headers.indexOf('check-in time');
+.attendee-row { display: flex; align-items: center; background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--r); padding: 14px; margin-bottom: 7px; cursor: pointer; transition: background 0.15s, border-color 0.15s, opacity 0.15s; gap: 12px; -webkit-user-select: none; user-select: none; }
+.attendee-row:active { opacity: 0.75; }
+.attendee-row.checked { background: var(--checked-bg); border-color: var(--checked-border); }
+.attendee-row.walkin { background: var(--walkin-bg); border-color: var(--walkin-border); }
+.attendee-row.walkin.checked { background: #151200; border-color: #5a4a00; }
 
-          const importedAt = new Date().toLocaleString();
-          const dataRows = [];
+.check-circle { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.attendee-row.checked .check-circle { background: var(--green); border-color: var(--green); }
+.attendee-row.walkin .check-circle { border-color: var(--gold); }
+.attendee-row.walkin.checked .check-circle { background: var(--gold); border-color: var(--gold); }
+.check-circle svg { display: none; width: 14px; height: 14px; color: #0a1f14; }
+.attendee-row.checked .check-circle svg { display: block; }
+.attendee-row.walkin.checked .check-circle svg { color: #1a1200; }
 
-          for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            if (row.every(cell => !cell.trim())) continue;
+.attendee-info { flex: 1; min-width: 0; }
+.attendee-name { font-size: 16px; font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.attendee-row.checked .attendee-name { color: var(--green); }
+.attendee-row.walkin .attendee-name { color: var(--gold); }
+.attendee-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.walkin-badge { display: inline-block; background: rgba(240,180,41,0.15); color: var(--gold); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; border-radius: 4px; padding: 1px 5px; margin-right: 4px; }
+.checked-time { font-size: 11px; color: var(--muted); flex-shrink: 0; }
 
-            dataRows.push([
-              eventNameIdx   >= 0 ? row[eventNameIdx]   : '',
-              eventDateIdx   >= 0 ? row[eventDateIdx]   : '',
-              firstNameIdx   >= 0 ? row[firstNameIdx]   : '',
-              lastNameIdx    >= 0 ? row[lastNameIdx]     : '',
-              emailIdx       >= 0 ? row[emailIdx]        : '',
-              statusIdx      >= 0 ? row[statusIdx]       : '',
-              awnMemberIdx   >= 0 ? row[awnMemberIdx]    : '',
-              checkInTimeIdx >= 0 ? row[checkInTimeIdx]  : '',
-              importedAt
-            ]);
-          }
+.empty-state { text-align: center; padding: 48px 24px; color: var(--muted); font-size: 15px; }
 
-          if (dataRows.length > 0) {
-            sheet.getRange(sheet.getLastRow() + 1, 1, dataRows.length, 9).setValues(dataRows);
-            Logger.log(`Imported ${dataRows.length} rows from: ${attachment.getName()}`);
-          }
-        }
-      });
-    });
+.bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 10px 12px; padding-bottom: max(10px, env(safe-area-inset-bottom)); display: flex; gap: 8px; }
+.bottom-bar button { flex: 1; }
 
-    // Mark thread as processed
-    thread.addLabel(processedLabel);
-    Logger.log(`Marked thread as processed: ${thread.getFirstMessageSubject()}`);
-  });
+/* ── SAVED STATE BANNER ── */
+.saved-banner { background: var(--surface2); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.saved-banner p { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.saved-banner p strong { color: var(--text); display: block; }
+.saved-banner button { background: var(--danger); color: #fff; border: none; border-radius: var(--rs); padding: 8px 14px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
 
-  Logger.log('Import complete.');
+/* ── MERGE ── */
+#merge-screen h2 { font-family: 'DM Serif Display', serif; font-size: 24px; font-weight: 400; }
+#merge-screen p { color: var(--muted); font-size: 14px; line-height: 1.55; }
+.merge-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--r); padding: 16px; }
+.merge-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.export-code { background: var(--bg); border-radius: var(--rs); padding: 12px; font-family: monospace; font-size: 11px; color: var(--green); max-height: 80px; overflow: hidden; margin-bottom: 10px; white-space: nowrap; word-break: break-all; }
+.import-textarea { width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: var(--rs); padding: 12px; color: var(--text); font-family: monospace; font-size: 12px; resize: none; height: 80px; outline: none; }
+.import-textarea:focus { border-color: var(--accent); }
+.merge-result { background: var(--checked-bg); border: 1.5px solid var(--checked-border); border-radius: var(--rs); padding: 12px; font-size: 14px; color: var(--green); display: none; margin-top: 10px; }
+
+/* ── MODALS ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: flex-end; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--surface); border-radius: var(--r) var(--r) 0 0; padding: 24px 20px; padding-bottom: max(24px, env(safe-area-inset-bottom)); width: 100%; max-width: 480px; }
+.modal h3 { font-family: 'DM Serif Display', serif; font-size: 20px; font-weight: 400; margin-bottom: 6px; }
+.modal .modal-meta { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+.modal-fields { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+.modal-field { display: flex; gap: 8px; font-size: 14px; }
+.modal-field-label { color: var(--muted); min-width: 90px; flex-shrink: 0; }
+.modal-field-value { color: var(--text); word-break: break-word; }
+.modal-actions { display: flex; flex-direction: column; gap: 8px; }
+.add-modal-input { width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: var(--rs); padding: 12px 14px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 16px; outline: none; margin-bottom: 10px; }
+.add-modal-input:focus { border-color: var(--gold); }
+.add-modal-input::placeholder { color: var(--muted); }
+.email-preview { background: var(--bg); border-radius: var(--rs); padding: 14px; font-family: monospace; font-size: 12px; color: var(--text); white-space: pre-wrap; max-height: 260px; overflow-y: auto; line-height: 1.6; margin-bottom: 14px; border: 1px solid var(--border); }
+
+/* ── TOAST ── */
+.toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface2); border: 1px solid var(--border); border-radius: 30px; padding: 10px 20px; font-size: 14px; font-weight: 500; opacity: 0; transition: opacity 0.25s, transform 0.25s; z-index: 200; white-space: nowrap; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.green { color: var(--green); }
+.toast.gold { color: var(--gold); }
+
+/* ── AUTOSAVE INDICATOR ── */
+.autosave { position: fixed; top: 8px; right: 12px; font-size: 11px; color: var(--muted); z-index: 50; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.autosave.show { opacity: 1; }
+.attendee-row.cancelled { background: var(--surface); border-color: var(--border); opacity: 0.45; }
+.attendee-row.cancelled .attendee-name { text-decoration: line-through; color: var(--muted); }
+.attendee-row.cancelled .attendee-meta { color: var(--muted); }
+.cancel-btn { background: none; border: none; font-size: 18px; color: var(--muted); cursor: pointer; padding: 4px 2px; flex-shrink: 0; opacity: 0.5; transition: opacity 0.15s; }
+.cancel-btn:active { opacity: 1; }
+.attendee-row.cancelled .cancel-btn { opacity: 1; color: var(--danger); }
+.attendee-row.nonmember .attendee-name { color: #ff9500; font-weight: 700; }
+.attendee-row.nonmember .attendee-meta { color: #7a5a00; }
+.nonmember-badge { display: inline-block; background: rgba(255,149,0,0.15); color: #ff9500; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; border-radius: 4px; padding: 1px 5px; margin-right: 4px; }
+.counter-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.counter.orange { color: #ff9500; border-color: rgba(255,149,0,0.3); }
+</style>
+</head>
+<body>
+
+<!-- UPLOAD SCREEN -->
+<div id="upload-screen" class="screen active">
+
+  <div id="install-banner">
+    <div class="install-icon">📲</div>
+    <div class="install-text">
+      <strong>Add to Home Screen for best experience</strong>
+      <p>Tap the Share button in Safari → "Add to Home Screen". Fixes file loading and saves your work automatically.</p>
+    </div>
+    <button class="install-dismiss" onclick="dismissInstallBanner()">✕</button>
+  </div>
+
+  <div class="logo-mark">
+    <svg viewBox="0 0 32 32" fill="none"><path d="M6 16L13 23L26 9" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <h1>Event<br>Check-In</h1>
+  <p class="subtitle">Load your Eventbrite CSV to get started. Works offline. Data saves automatically.</p>
+
+  <div class="upload-zone" id="drop-zone">
+    <input type="file" id="csv-file-input" accept=".csv,text/csv" />
+    <div class="upload-icon">📋</div>
+    <div class="upload-label">Tap to select CSV file</div>
+    <div class="upload-hint">From Files, iCloud Drive, or email attachment</div>
+  </div>
+
+  <button class="btn btn-secondary" onclick="loadDemo()">Try with sample data</button>
+
+  <div class="instructions">
+    <h3>How to export from Eventbrite</h3>
+    <ol>
+      <li>On a computer, log into Eventbrite and go to your event → <strong>Event Reports</strong></li>
+      <li>Scroll down to the <strong>Attendees</strong> section</li>
+      <li>Select <strong>Custom Questions Responses</strong></li>
+      <li>Click <strong>CSV</strong> about halfway down the page</li>
+      <li>Email the file to yourself</li>
+      <li>On your phone, open the email and save the attachment to <strong>Files / iCloud Drive</strong></li>
+      <li>Tap <strong>Select CSV file</strong> above and choose it</li>
+      <li>If the file picker doesn't work, <strong>add this page to your Home Screen</strong> first (banner above)</li>
+    </ol>
+    <p style="font-size:12px;color:var(--muted);margin-top:10px;font-style:italic;">For the technically savvy, you can do this from your phone by requesting the desktop version of the website.</p>
+  </div>
+</div>
+
+<!-- SAVED STATE BANNER (shown on upload screen if data exists) -->
+<div id="saved-banner" class="saved-banner" style="display:none; order:-1;">
+  <p><strong id="saved-banner-title">Previous event</strong><span id="saved-banner-detail"></span></p>
+  <button onclick="clearSavedData()">Clear</button>
+</div>
+
+<!-- CHECK-IN SCREEN -->
+<div id="checkin-screen" class="screen">
+  <div class="top-bar">
+    <div class="top-row">
+      <div class="event-title" id="event-title">Attendees</div>
+    </div>
+    <div class="counter-row">
+      <div class="counter" id="counter">0 / 0</div>
+      <div class="counter orange" id="nonmember-counter" style="display:none">0 non-members</div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="search-row">
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input class="search-input" id="search-input" type="search" placeholder="Search by name…" oninput="renderList()" autocomplete="off" autocorrect="off" spellcheck="false" />
+      </div>
+      <button class="filter-btn" id="filter-btn" onclick="toggleFilter()">Remaining</button>
+    </div>
+  </div>
+  <div class="list-container" id="list-container"></div>
+  <div class="bottom-bar">
+    <button class="btn btn-gold btn-sm" onclick="showAddWalkin()">+ Walk-in</button>
+    <button class="btn btn-secondary btn-sm" onclick="showMerge()">⇄ Merge</button>
+    <button class="btn btn-primary btn-sm" onclick="showEmailExport()">✉ Export</button>
+  </div>
+</div>
+
+<!-- MERGE SCREEN -->
+<div id="merge-screen" class="screen">
+  <h2>Merge Check-Ins</h2>
+  <p>At the end of the event, one device collects everyone's data. Export from each phone, then import here to combine.</p>
+  <div class="merge-card">
+    <h3>Step 1 — Export from this device</h3>
+    <div class="export-code" id="export-code">—</div>
+    <button class="btn btn-primary btn-sm" onclick="copyExport()">Copy export code</button>
+  </div>
+  <div class="merge-card">
+    <h3>Step 2 — Import from another device</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Paste the export code from another volunteer's phone, then tap Merge.</p>
+    <textarea class="import-textarea" id="import-input" placeholder="Paste export code here…"></textarea>
+    <button class="btn btn-green btn-sm" onclick="doMerge()" style="margin-top:10px;width:100%;max-width:none;">Merge into this list</button>
+    <div class="merge-result" id="merge-result"></div>
+  </div>
+  <button class="btn btn-secondary" onclick="showCheckin()">← Back to check-in</button>
+</div>
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="detail-modal" onclick="closeModal('detail-modal',event)">
+  <div class="modal">
+    <h3 id="modal-name"></h3>
+    <div class="modal-meta" id="modal-meta"></div>
+    <div class="modal-fields" id="modal-fields"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="modal-toggle-btn" onclick="modalToggle()"></button>
+      <button class="btn btn-danger btn-sm" id="modal-delete-btn" onclick="modalDelete()" style="display:none">Remove walk-in</button>
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('detail-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD WALK-IN MODAL -->
+<div class="modal-overlay" id="walkin-modal" onclick="closeModal('walkin-modal',event)">
+  <div class="modal">
+    <h3>Add Walk-in</h3>
+    <div class="modal-meta">Person not on the original list</div>
+    <input class="add-modal-input" id="walkin-name-input" type="text" placeholder="Full name" autocomplete="off" autocorrect="off" />
+    <input class="add-modal-input" id="walkin-email-input" type="email" placeholder="Email address (optional)" autocomplete="off" autocorrect="off" autocapitalize="off" />
+    <input class="add-modal-input" id="walkin-note-input" type="text" placeholder="Note (optional — e.g. paid cash)" autocomplete="off" />
+    <div class="modal-actions">
+      <button class="btn btn-gold" onclick="confirmAddWalkin()">Add &amp; Check In</button>
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('walkin-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EMAIL EXPORT MODAL -->
+<div class="modal-overlay" id="email-modal" onclick="closeModal('email-modal',event)">
+  <div class="modal">
+    <h3>Email Report</h3>
+    <div class="modal-meta" id="email-modal-meta"></div>
+    <div class="email-preview" id="email-preview"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="copyEmailText()">Copy — then paste into email</button>
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('email-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="autosave" id="autosave-indicator">saved ✓</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ── STATE ──
+let attendees = [];
+let nextWalkinId = 9000;
+let showOnlyRemaining = false;
+let currentModalId = null;
+let eventTitle = 'Attendees';
+const STORAGE_KEY = 'checkin_app_v1';
+
+// ── PERSISTENCE ──
+function saveState() {
+  try {
+    const state = { attendees, nextWalkinId, eventTitle, savedAt: new Date().toISOString() };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const ind = document.getElementById('autosave-indicator');
+    ind.classList.add('show');
+    clearTimeout(ind._t);
+    ind._t = setTimeout(() => ind.classList.remove('show'), 1500);
+  } catch(e) { /* storage not available */ }
 }
 
-// ── CSV PARSER ──
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const state = JSON.parse(raw);
+    if (!state.attendees || state.attendees.length === 0) return false;
+    attendees = state.attendees;
+    nextWalkinId = state.nextWalkinId || 9000;
+    eventTitle = state.eventTitle || 'Attendees';
+    return state;
+  } catch(e) { return false; }
+}
+
+function clearSavedData() {
+  if (!confirm('Clear saved event data and start fresh?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  attendees = []; nextWalkinId = 9000; eventTitle = 'Attendees';
+  document.getElementById('saved-banner').style.display = 'none';
+  showToast('Cleared');
+}
+
+// ── INSTALL BANNER ──
+function showInstallBannerIfNeeded() {
+  const dismissed = localStorage.getItem('install_banner_dismissed');
+  const isStandalone = window.navigator.standalone;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (!dismissed && isIOS && !isStandalone) {
+    document.getElementById('install-banner').classList.add('show');
+  }
+}
+function dismissInstallBanner() {
+  localStorage.setItem('install_banner_dismissed', '1');
+  document.getElementById('install-banner').classList.remove('show');
+}
+
+// ── ON LOAD ──
+window.addEventListener('load', () => {
+  showInstallBannerIfNeeded();
+  const saved = loadState();
+  if (saved) {
+    // Show resume option on upload screen
+    const banner = document.getElementById('saved-banner');
+    const checked = attendees.filter(a=>a.checkedIn).length;
+    document.getElementById('saved-banner-title').textContent = eventTitle;
+    document.getElementById('saved-banner-detail').textContent =
+      ` — ${checked} of ${attendees.length} checked in. `;
+    banner.style.display = 'flex';
+    // Insert banner above upload zone
+    const uploadScreen = document.getElementById('upload-screen');
+    uploadScreen.insertBefore(banner, uploadScreen.firstChild);
+
+    // Add resume button
+    const resumeBtn = document.createElement('button');
+    resumeBtn.className = 'btn btn-green';
+    resumeBtn.style.marginBottom = '8px';
+    resumeBtn.textContent = '↩ Resume: ' + eventTitle;
+    resumeBtn.onclick = () => { document.getElementById('event-title').textContent = eventTitle; showCheckin(); };
+    uploadScreen.insertBefore(resumeBtn, uploadScreen.querySelector('.upload-zone'));
+  }
+});
+
+// ── CSV PARSING ──
 function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/);
-  return lines.map(line => {
-    const result = [];
-    let cur = '', inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') {
-        if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
-        else inQuote = !inQuote;
-      } else if (c === ',' && !inQuote) {
-        result.push(cur.trim()); cur = '';
-      } else cur += c;
-    }
-    result.push(cur.trim());
-    return result;
-  });
+  if (lines.length < 2) return null;
+  const headers = splitCSVLine(lines[0]);
+  const firstIdx = headers.findIndex(h => /first.?name/i.test(h));
+  const lastIdx  = headers.findIndex(h => /last.?name/i.test(h));
+  const nameIdx  = headers.findIndex(h => /^name$/i.test(h) || /attendee.name/i.test(h));
+  const orderIdx = headers.findIndex(h => /order.*(#|num|id)/i.test(h) || /^order$/i.test(h));
+  const ticketIdx= headers.findIndex(h => /ticket.type/i.test(h) || /ticket.name/i.test(h));
+  const emailIdx = headers.findIndex(h => /email/i.test(h));
+  const awnIdx   = headers.findIndex(h => /awn.member/i.test(h));
+  const results = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCSVLine(lines[i]);
+    if (cols.every(c => !c.trim())) continue;
+    let name = '';
+    if (firstIdx >= 0 && lastIdx >= 0) name = ((cols[firstIdx]||'')+' '+(cols[lastIdx]||'')).trim();
+    else if (nameIdx >= 0) name = (cols[nameIdx]||'').trim();
+    else name = cols[0].trim();
+    if (!name) continue;
+    const fields = {};
+    if (orderIdx >= 0 && cols[orderIdx]) fields['Order #'] = cols[orderIdx];
+    if (ticketIdx >= 0 && cols[ticketIdx]) fields['Ticket'] = cols[ticketIdx];
+    if (emailIdx >= 0 && cols[emailIdx]) fields['Email'] = cols[emailIdx];
+    const metaParts = [];
+    if (fields['Ticket']) metaParts.push(fields['Ticket']);
+    if (fields['Order #']) metaParts.push('Order ' + fields['Order #']);
+    const awnVal = awnIdx >= 0 ? (cols[awnIdx]||'').trim() : '';
+    const nonMember = awnVal.toLowerCase().includes('not');
+    results.push({ id: i, name, meta: metaParts.join(' · '), fields, checkedIn: false, checkedAt: null, walkIn: false, nonMember, cancelled: false });
+  }
+  return results;
 }
+
+function splitCSVLine(line) {
+  const result = []; let cur = '', inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { if (inQuote && line[i+1]==='"') { cur+='"'; i++; } else inQuote=!inQuote; }
+    else if (c===',' && !inQuote) { result.push(cur.trim()); cur=''; }
+    else cur+=c;
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+// ── LOADING ──
+document.getElementById('csv-file-input').addEventListener('change', function(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => processCSV(ev.target.result, file.name.replace(/\.csv$/i,''));
+  reader.onerror = () => showToast('Could not read file — try again');
+  reader.readAsText(file);
+});
+
+function processCSV(text, title) {
+  const parsed = parseCSV(text);
+  if (!parsed || parsed.length === 0) { showToast('Could not read that CSV. Try the Eventbrite Summary export.'); return; }
+  attendees = parsed;
+  eventTitle = title;
+  document.getElementById('event-title').textContent = title;
+  saveState();
+  showCheckin(); renderList(); updateCounter();
+}
+
+function loadDemo() {
+  const demo = `First Name,Last Name,Email,Order #,Ticket Type
+Alice,Johnson,alice@email.com,ORD-001,General Admission
+Bob,Smith,bob@email.com,ORD-002,VIP
+Carol,White,carol@email.com,ORD-003,General Admission
+David,Brown,david@email.com,ORD-004,General Admission
+Eva,Martinez,eva@email.com,ORD-005,Student
+Frank,Lee,frank@email.com,ORD-006,VIP
+Grace,Kim,grace@email.com,ORD-007,General Admission
+Henry,Davis,henry@email.com,ORD-008,General Admission
+Isabelle,Taylor,isa@email.com,ORD-009,Student
+James,Wilson,james@email.com,ORD-010,General Admission
+Karen,Moore,karen@email.com,ORD-011,VIP
+Liam,Anderson,liam@email.com,ORD-012,General Admission`;
+  processCSV(demo, 'Sample Event');
+}
+
+// ── RENDER ──
+function renderList() {
+  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  const container = document.getElementById('list-container');
+  let list = [...attendees];
+  if (showOnlyRemaining) list = list.filter(a => !a.checkedIn);
+  if (q) list = list.filter(a => a.name.toLowerCase().includes(q));
+  list.sort((a,b) => {
+    if (!showOnlyRemaining && a.checkedIn !== b.checkedIn) return a.checkedIn ? 1 : -1;
+    return a.name.localeCompare(b.name);
+  });
+  if (list.length === 0) {
+    container.innerHTML = `<div class="empty-state">${q ? 'No matches for "'+escHtml(q)+'"' : (showOnlyRemaining ? 'Everyone is checked in! 🎉' : 'No attendees loaded.')}</div>`;
+    return;
+  }
+  if (!q) {
+    const groups = {};
+    list.forEach(a => { const l = a.name[0].toUpperCase(); if (!groups[l]) groups[l]=[]; groups[l].push(a); });
+    let html = '';
+    Object.keys(groups).sort().forEach(letter => {
+      html += `<div class="section-label">${letter}</div>`;
+      groups[letter].forEach(a => html += rowHTML(a));
+    });
+    container.innerHTML = html;
+  } else {
+    container.innerHTML = list.map(rowHTML).join('');
+  }
+}
+
+function rowHTML(a) {
+  const time = a.checkedAt ? fmtTime(a.checkedAt) : '';
+  const walkinBadge = a.walkIn ? '<span class="walkin-badge">Walk-in</span>' : '';
+  const nonMemberBadge = (!a.walkIn && a.nonMember) ? '<span class="nonmember-badge">Not AWN member</span>' : '';
+  const classes = ['attendee-row', a.checkedIn?'checked':'', a.walkIn?'walkin':'', (!a.walkIn&&a.nonMember)?'nonmember':'', a.cancelled?'cancelled':''].filter(Boolean).join(' ');
+  const cancelTip = a.cancelled ? '↩ Undo cancel' : '✕';
+  return `<div class="${classes}" onclick="tapRow(${a.id})">
+    <div class="check-circle">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7l3.5 3.5L12 3"/></svg>
+    </div>
+    <div class="attendee-info">
+      <div class="attendee-name">${escHtml(a.name)}</div>
+      <div class="attendee-meta">${walkinBadge}${nonMemberBadge}${escHtml(a.meta||'')}</div>
+    </div>
+    ${time ? `<div class="checked-time">${time}</div>` : ''}
+    ${!a.walkIn ? `<button class="cancel-btn" onclick="toggleCancel(event,${a.id})" title="${cancelTip}">${a.cancelled ? '↩' : '✕'}</button>` : ''}
+  </div>`;
+}
+
+function tapRow(id) { const a = attendees.find(x=>x.id===id); if (a) showModal(a); }
+
+function updateCounter() {
+  const active = attendees.filter(a=>!a.cancelled);
+  const total = active.length;
+  const checked = active.filter(a=>a.checkedIn).length;
+  document.getElementById('counter').textContent = checked+' / '+total;
+  document.getElementById('progress-fill').style.width = (total?(checked/total*100):0)+'%';
+  const nonMembers = active.filter(a=>a.nonMember && !a.walkIn);
+  const nmEl = document.getElementById('nonmember-counter');
+  if (nonMembers.length > 0) {
+    const nmChecked = nonMembers.filter(a=>a.checkedIn).length;
+    nmEl.textContent = nmChecked+' / '+nonMembers.length+' non-members';
+    nmEl.style.display = 'block';
+  } else {
+    nmEl.style.display = 'none';
+  }
+}
+
+function toggleFilter() {
+  showOnlyRemaining = !showOnlyRemaining;
+  document.getElementById('filter-btn').classList.toggle('active', showOnlyRemaining);
+  document.getElementById('filter-btn').textContent = showOnlyRemaining ? 'All' : 'Remaining';
+  renderList();
+}
+
+// ── DETAIL MODAL ──
+function showModal(a) {
+  currentModalId = a.id;
+  document.getElementById('modal-name').textContent = a.name;
+  document.getElementById('modal-meta').textContent = a.walkIn ? 'Walk-in' : (a.meta||'');
+  const entries = Object.entries(a.fields||{});
+  if (a.walkIn && a.meta) entries.push(['Note', a.meta]);
+  document.getElementById('modal-fields').innerHTML = entries.map(([k,v])=>
+    `<div class="modal-field"><span class="modal-field-label">${escHtml(k)}</span><span class="modal-field-value">${escHtml(v)}</span></div>`
+  ).join('');
+  const btn = document.getElementById('modal-toggle-btn');
+  btn.textContent = a.checkedIn ? '✓ Checked in — tap to undo' : 'Check in';
+  btn.className = 'btn ' + (a.checkedIn ? 'btn-danger' : 'btn-primary');
+  document.getElementById('modal-delete-btn').style.display = a.walkIn ? 'block' : 'none';
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+function modalToggle() {
+  const a = attendees.find(x=>x.id===currentModalId); if (!a) return;
+  a.checkedIn = !a.checkedIn;
+  a.checkedAt = a.checkedIn ? new Date().toISOString() : null;
+  closeModal('detail-modal');
+  renderList(); updateCounter(); saveState();
+  showToast(a.checkedIn ? a.name+' checked in ✓' : a.name+' unchecked', a.checkedIn?'green':'');
+}
+
+function modalDelete() {
+  const a = attendees.find(x=>x.id===currentModalId); if (!a||!a.walkIn) return;
+  if (!confirm('Remove '+a.name+' from the list?')) return;
+  attendees = attendees.filter(x=>x.id!==currentModalId);
+  closeModal('detail-modal');
+  renderList(); updateCounter(); saveState();
+  showToast(a.name+' removed');
+}
+
+// ── CANCEL ──
+function toggleCancel(e, id) {
+  e.stopPropagation();
+  const a = attendees.find(x=>x.id===id); if (!a) return;
+  if (!a.cancelled && a.checkedIn) {
+    showToast('Uncheck them first before cancelling'); return;
+  }
+  a.cancelled = !a.cancelled;
+  if (a.cancelled) a.checkedIn = false, a.checkedAt = null;
+  renderList(); updateCounter(); saveState();
+  showToast(a.cancelled ? a.name+' marked as cancelled' : a.name+' cancellation undone');
+}
+
+// ── WALK-IN ──
+function showAddWalkin() {
+  document.getElementById('walkin-name-input').value = '';
+  document.getElementById('walkin-email-input').value = '';
+  document.getElementById('walkin-note-input').value = '';
+  document.getElementById('walkin-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('walkin-name-input').focus(), 300);
+}
+
+function confirmAddWalkin() {
+  const name = document.getElementById('walkin-name-input').value.trim();
+  if (!name) { showToast('Please enter a name'); return; }
+  const email = document.getElementById('walkin-email-input').value.trim();
+  const note = document.getElementById('walkin-note-input').value.trim();
+  const fields = {};
+  if (email) fields['Email'] = email;
+  if (note) fields['Note'] = note;
+  const a = { id: nextWalkinId++, name, meta: note, fields, checkedIn: true, checkedAt: new Date().toISOString(), walkIn: true };
+  attendees.push(a);
+  closeModal('walkin-modal');
+  renderList(); updateCounter(); saveState();
+  showToast(name+' added as walk-in ✓', 'gold');
+}
+
+// ── EMAIL EXPORT ──
+function buildEmailText() {
+  const title = eventTitle;
+  const now = new Date().toLocaleString([], {dateStyle:'long', timeStyle:'short'});
+  const registered = attendees.filter(a=>!a.walkIn && !a.cancelled);
+  const cancelled  = attendees.filter(a=>!a.walkIn && a.cancelled);
+  const walkins    = attendees.filter(a=>a.walkIn);
+  const attended   = registered.filter(a=>a.checkedIn);
+  const noshows    = registered.filter(a=>!a.checkedIn);
+  const totalAttended = attended.length + walkins.length;
+  let txt = '';
+  txt += `EVENT CHECK-IN REPORT\n${'─'.repeat(32)}\n`;
+  txt += `Event: ${title}\nGenerated: ${now}\n\n`;
+  txt += `SUMMARY\n${'─'.repeat(32)}\n`;
+  txt += `Registered:          ${registered.length + cancelled.length}\n`;
+  txt += `Attended:            ${totalAttended}`;
+  if (walkins.length > 0) txt += ` (incl. ${walkins.length} walk-in${walkins.length!==1?'s':''})`;
+  txt += `\nDid not attend:      ${noshows.length}\n`;
+  txt += `Late cancellations:  ${cancelled.length}\n\n`;
+  txt += `DID NOT ATTEND (${noshows.length})\n${'─'.repeat(32)}\n`;
+  if (noshows.length === 0) txt += `Everyone showed up!\n`;
+  else noshows.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
+    txt += a.name;
+    if (a.fields['Email']) txt += `  <${a.fields['Email']}>`;
+    txt += '\n';
+  });
+  txt += `\nATTENDED (${attended.length})\n${'─'.repeat(32)}\n`;
+  if (attended.length === 0) txt += `None yet.\n`;
+  else attended.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
+    txt += a.name;
+    if (a.fields['Email']) txt += `  <${a.fields['Email']}>`;
+    if (a.checkedAt) txt += `  ${fmtTime(a.checkedAt)}`;
+    txt += '\n';
+  });
+  if (walkins.length > 0) {
+    txt += `\nWALK-INS (${walkins.length})\n${'─'.repeat(32)}\n`;
+    walkins.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
+      txt += a.name;
+      if (a.fields && a.fields['Email']) txt += `  <${a.fields['Email']}>`;
+      if (a.meta) txt += `  [${a.meta}]`;
+      txt += '\n';
+    });
+  }
+  if (cancelled.length > 0) {
+    txt += `\nLATE CANCELLATIONS (${cancelled.length})\n${'─'.repeat(32)}\n`;
+    cancelled.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
+      txt += a.name;
+      if (a.fields['Email']) txt += `  <${a.fields['Email']}>`;
+      txt += '\n';
+    });
+  }
+  return txt;
+}
+
+function showEmailExport() {
+  const txt = buildEmailText();
+  const registered = attendees.filter(a=>!a.walkIn);
+  const walkins = attendees.filter(a=>a.walkIn);
+  const attended = registered.filter(a=>a.checkedIn).length + walkins.length;
+  const noshows = registered.filter(a=>!a.checkedIn).length;
+  const cancelCount = attendees.filter(a=>!a.walkIn && a.cancelled).length;
+  document.getElementById('email-modal-meta').textContent =
+    `${attended} attended · ${noshows} no-show${noshows!==1?'s':''} · ${walkins.length} walk-in${walkins.length!==1?'s':''} · ${cancelCount} cancellation${cancelCount!==1?'s':''}`;
+  document.getElementById('email-preview').textContent = txt;
+  document.getElementById('email-modal').classList.add('open');
+}
+
+function copyEmailText() {
+  const txt = buildEmailText();
+  navigator.clipboard.writeText(txt)
+    .then(()=>showToast('Copied! Open your email app and paste ✓','green'))
+    .catch(()=>{
+      // fallback: select the preview text
+      const el = document.getElementById('email-preview');
+      const range = document.createRange(); range.selectNodeContents(el);
+      window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+      showToast('Text selected — copy it manually');
+    });
+}
+
+// ── MERGE ──
+function showMerge() {
+  showScreen('merge-screen');
+  document.getElementById('export-code').textContent = buildExport();
+}
+
+function buildExport() {
+  const data = attendees.map(a=>({id:a.id,name:a.name,ci:a.checkedIn,at:a.checkedAt,wi:a.walkIn,meta:a.meta}));
+  return btoa(JSON.stringify(data));
+}
+
+function copyExport() {
+  navigator.clipboard.writeText(document.getElementById('export-code').textContent)
+    .then(()=>showToast('Copied!'))
+    .catch(()=>showToast('Select and copy the text above'));
+}
+
+function doMerge() {
+  const raw = document.getElementById('import-input').value.trim();
+  if (!raw) { showToast('Paste an export code first'); return; }
+  let imported;
+  try { imported = JSON.parse(atob(raw)); } catch(e) { showToast('Invalid code — check you copied it all'); return; }
+  let checkins = 0, newWalkins = 0;
+  imported.forEach(item => {
+    if (item.wi) {
+      const exists = attendees.find(a=>a.walkIn && a.name.toLowerCase()===item.name.toLowerCase());
+      if (!exists) { attendees.push({ id: nextWalkinId++, name: item.name, meta: item.meta||'', fields: item.meta?{'Note':item.meta}:{}, checkedIn: true, checkedAt: item.at, walkIn: true }); newWalkins++; }
+    } else {
+      const match = attendees.find(a=>!a.walkIn && a.name.toLowerCase()===item.name.toLowerCase());
+      if (match && !match.checkedIn && item.ci) { match.checkedIn=true; match.checkedAt=item.at; checkins++; }
+    }
+  });
+  const result = document.getElementById('merge-result');
+  result.style.display = 'block';
+  result.textContent = `Merged! ${checkins} check-in${checkins!==1?'s':''} + ${newWalkins} walk-in${newWalkins!==1?'s':''} added.`;
+  document.getElementById('import-input').value = '';
+  document.getElementById('export-code').textContent = buildExport();
+  updateCounter(); saveState();
+}
+
+// ── NAV ──
+function showScreen(id) { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+function showCheckin() { showScreen('checkin-screen'); renderList(); updateCounter(); }
+
+function closeModal(id, e) {
+  if (e && e.target !== document.getElementById(id)) return;
+  document.getElementById(id).classList.remove('open');
+  if (id==='detail-modal') currentModalId=null;
+}
+
+document.getElementById('walkin-note-input').addEventListener('keydown', e=>{ if(e.key==='Enter') confirmAddWalkin(); });
+document.getElementById('walkin-name-input').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('walkin-email-input').focus(); });
+document.getElementById('walkin-email-input').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('walkin-note-input').focus(); });
+
+// ── UTILS ──
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtTime(iso) { const d=new Date(iso); return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
+function showToast(msg, style) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show'+(style?' '+style:'');
+  clearTimeout(t._timer); t._timer = setTimeout(()=>t.className='toast', 2400);
+}
+
+// Drag-and-drop (desktop)
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e=>{e.preventDefault();dz.classList.add('drag-over');});
+dz.addEventListener('dragleave', ()=>dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e=>{
+  e.preventDefault(); dz.classList.remove('drag-over');
+  const file=e.dataTransfer.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>processCSV(ev.target.result, file.name.replace(/\.csv$/i,''));
+  reader.readAsText(file);
+});
+</script>
+</body>
+</html>
