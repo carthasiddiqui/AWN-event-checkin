@@ -685,11 +685,12 @@ function sendToTracker() {
   if (navigator.share && navigator.canShare) {
     const file = new File([blob], fileName, {type: 'text/csv'});
     if (navigator.canShare({files: [file]})) {
+      showToast('Send to: awneventtracking@gmail.com', 'green');
       navigator.share({
         files: [file],
         title: 'AWN Check-In Data',
         text: 'AWN check-in data for ' + title
-      }).then(() => showToast('Shared ✓', 'green'))
+      }).then(() => showToast('Send to: awneventtracking@gmail.com', 'green'))
         .catch(err => { if (err.name !== 'AbortError') fallbackSendToTracker(blob, fileName, csvContent); });
       return;
     }
@@ -727,6 +728,7 @@ function buildEmailText() {
   const noshows    = registered.filter(a=>!a.checkedIn);
   const totalAttended = attended.length + walkins.length;
   let txt = '';
+  txt += `Please send to: TreasurerAWN@gmail.com\n\n`;
   txt += `EVENT CHECK-IN REPORT\n${'─'.repeat(32)}\n`;
   txt += `Event: ${title}\nGenerated: ${now}\n\n`;
   txt += `SUMMARY\n${'─'.repeat(32)}\n`;
