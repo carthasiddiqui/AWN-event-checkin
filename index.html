@@ -820,7 +820,7 @@ function buildEmailText() {
   const noshows    = registered.filter(a=>!a.checkedIn);
   const totalAttended = attended.length + walkins.length;
   let txt = '';
-  txt += `Please send to: TreasurerAWN@gmail.com\n\n`;
+  txt += `Please send to: TreasurerAWN@gmail.com and awneventtracking@gmail.com\n\n`;
   txt += `EVENT CHECK-IN REPORT\n${'─'.repeat(32)}\n`;
   txt += `Event: ${title}\nGenerated: ${now}\n\n`;
   txt += `SUMMARY\n${'─'.repeat(32)}\n`;
@@ -841,8 +841,7 @@ function buildEmailText() {
   if (attended.length === 0) txt += `None yet.\n`;
   else attended.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
     txt += a.name;
-    const em2 = a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || '');
-    if (em2) txt += `  <${em2}>`;
+    const e2 = a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || ''); if (e2) txt += `  <${e2}>`;
     if (a.checkedAt) txt += `  ${fmtTime(a.checkedAt)}`;
     txt += '\n';
   });
@@ -850,7 +849,7 @@ function buildEmailText() {
     txt += `\nWALK-INS (${walkins.length})\n${'─'.repeat(32)}\n`;
     walkins.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
       txt += a.name;
-      if (a.fields && a.fields['Email']) txt += `  <${a.fields['Email']}>`;
+      const e4 = a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || ''); if (e4) txt += `  <${e4}>`;
       if (a.meta) txt += `  [${a.meta}]`;
       txt += '\n';
     });
@@ -859,8 +858,7 @@ function buildEmailText() {
     txt += `\nLATE CANCELLATIONS (${cancelled.length})\n${'─'.repeat(32)}\n`;
     cancelled.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
       txt += a.name;
-      const em3 = a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || '');
-      if (em3) txt += `  <${em3}>`;
+      const e3 = a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || ''); if (e3) txt += `  <${e3}>`;
       txt += '\n';
     });
   }
@@ -920,7 +918,7 @@ function fallbackStep2(blob, fileName, title) {
   URL.revokeObjectURL(url);
   setTimeout(() => {
     const subject = encodeURIComponent('AWN Check-In Report: ' + title);
-    const body = encodeURIComponent('Paste the copied report here.');
+    const body = encodeURIComponent('Paste here:');
     window.location.href = 'mailto:TreasurerAWN@gmail.com,awneventtracking@gmail.com?subject='+subject+'&body='+body;
   }, 800);
   showToast('Paste the copied report into the email body', 'green');
