@@ -145,6 +145,17 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
 .add-modal-input::placeholder { color: var(--muted); }
 .email-preview { background: var(--bg); border-radius: var(--rs); padding: 14px; font-family: monospace; font-size: 12px; color: var(--text); white-space: pre-wrap; max-height: 260px; overflow-y: auto; line-height: 1.6; margin-bottom: 14px; border: 1px solid var(--border); }
 
+/* ── EXPORT OVERLAY ── */
+.export-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 300; align-items: center; justify-content: center; padding: 24px; }
+.export-overlay.open { display: flex; }
+.export-card { background: var(--surface); border-radius: var(--r); padding: 28px 24px; width: 100%; max-width: 360px; text-align: center; }
+.export-card h3 { font-family: 'DM Serif Display', serif; font-size: 22px; font-weight: 400; margin-bottom: 8px; }
+.export-card p { font-size: 14px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+.export-addresses { background: var(--bg); border-radius: var(--rs); padding: 16px; margin-bottom: 20px; }
+.export-address { font-size: 17px; font-weight: 600; color: var(--accent); margin-bottom: 8px; }
+.export-address:last-child { margin-bottom: 0; color: var(--green); }
+.export-card .btn { margin-top: 0; }
+
 /* ── TOAST ── */
 .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface2); border: 1px solid var(--border); border-radius: 30px; padding: 10px 20px; font-size: 14px; font-weight: 500; opacity: 0; transition: opacity 0.25s, transform 0.25s; z-index: 200; white-space: nowrap; pointer-events: none; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -307,6 +318,19 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
 </div>
 
 <div class="autosave" id="autosave-indicator">saved ✓</div>
+
+<!-- EXPORT OVERLAY -->
+<div class="export-overlay" id="export-overlay">
+  <div class="export-card">
+    <h3>Send this email to:</h3>
+    <p>Type these addresses into the email that just opened, then tap Send.</p>
+    <div class="export-addresses">
+      <div class="export-address">TreasurerAWN@gmail.com</div>
+      <div class="export-address">awneventtracking@gmail.com</div>
+    </div>
+    <button class="btn btn-primary" onclick="document.getElementById('export-overlay').classList.remove('open')">Got it</button>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -672,43 +696,41 @@ function doExport() {
 
   // Build text report
   const emailText = buildEmailText();
-  const fileName = `AWN_${title.replace(/\s+/g,'_')}_${eventDate.replace(/\//g,'-')}.csv`;
-  const blob = new Blob([csvContent], {type: 'text/csv'});
+  const baseFileName = `AWN_${title.replace(/\s+/g,'_')}_${eventDate.replace(/\//g,'-')}`;
+  const csvFileName = baseFileName + '.csv';
+  const txtFileName = baseFileName + '_report.txt';
 
-  // Body includes both addresses and the full text report
-  // Build body with proper line breaks — use \r\n for email clients
-  const header = 'Please send to: TreasurerAWN@gmail.com and awneventtracking@gmail.com';
-  const bodyText = header + '\r\n\r\n' + emailText.replace(/\n/g, '\r\n');
+  const header = 'Please forward to:\n  TreasurerAWN@gmail.com\n  awneventtracking@gmail.com\n\n';
+  const fullReport = header + emailText;
 
-  // Try Web Share API with file attachment
+  const csvBlob = new Blob([csvContent], {type: 'text/csv'});
+  const txtBlob = new Blob([fullReport], {type: 'text/plain'});
+
+  // Try Web Share API with both files attached
   if (navigator.share && navigator.canShare) {
-    const file = new File([blob], fileName, {type: 'text/csv'});
-    if (navigator.canShare({files: [file]})) {
+    const csvFile = new File([csvBlob], csvFileName, {type: 'text/csv'});
+    const txtFile = new File([txtBlob], txtFileName, {type: 'text/plain'});
+    if (navigator.canShare({files: [csvFile, txtFile]})) {
       navigator.share({
-        files: [file],
-        title: 'AWN Check-In: ' + title,
-        text: bodyText
+        files: [csvFile, txtFile],
+        title: 'AWN Check-In: ' + title
       }).then(() => showToast('Exported ✓', 'green'))
-        .catch(err => { if (err.name !== 'AbortError') fallbackExport(blob, fileName, bodyText, title); });
+        .catch(err => { if (err.name !== 'AbortError') fallbackExport(csvBlob, txtBlob, csvFileName, txtFileName, fullReport, title); });
       return;
     }
   }
-  fallbackExport(blob, fileName, bodyText, title);
+  fallbackExport(csvBlob, txtBlob, csvFileName, txtFileName, fullReport, title);
 }
 
-function fallbackExport(blob, fileName, bodyText, title) {
-  // Download CSV
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = fileName; a.click();
-  URL.revokeObjectURL(url);
-  // Open mail pre-filled
-  setTimeout(() => {
-    const subject = encodeURIComponent('AWN Check-In: ' + title);
-    const body = encodeURIComponent(bodyText);
-    window.location.href = `mailto:?subject=${subject}&body=${body}`;
-  }, 800);
-  showToast('File saved — attach it to the email that opens', 'green');
+function fallbackExport(csvBlob, txtBlob, csvFileName, txtFileName, fullReport, title) {
+  // Download both files
+  [{ blob: csvBlob, name: csvFileName }, { blob: txtBlob, name: txtFileName }].forEach(f => {
+    const url = URL.createObjectURL(f.blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = f.name; a.click();
+    URL.revokeObjectURL(url);
+  });
+  setTimeout(() => { document.getElementById('export-overlay').classList.add('open'); }, 900);
 }
 
 // ── SEND TO TRACKER ──
