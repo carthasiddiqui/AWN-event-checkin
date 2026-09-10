@@ -710,7 +710,7 @@ function fallbackSendToTracker(blob, fileName, csvContent) {
   // Small delay then open Mail so file is downloaded first
   setTimeout(() => {
     const subject = encodeURIComponent('AWN Check-In Data');
-    const body = encodeURIComponent('Check-in data for ' + eventTitle + ' — please see attached CSV.');
+    const body = encodeURIComponent('Please send to: awneventtracking@gmail.com\n\nCheck-in data for ' + eventTitle + ' — please see attached CSV.');
     window.location.href = `mailto:awneventtracking@gmail.com?subject=${subject}&body=${body}`;
   }, 800);
 
