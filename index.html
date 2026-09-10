@@ -252,7 +252,8 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
   <div class="bottom-bar">
     <button class="btn btn-gold btn-sm" onclick="showAddWalkin()">+ Walk-in</button>
     <button class="btn btn-secondary btn-sm" onclick="showMerge()">⇄ Merge</button>
-    <button class="btn btn-primary btn-sm" onclick="doExport()">✉ Export</button>
+    <button class="btn btn-secondary btn-sm" onclick="downloadCSV()">⬇ CSV</button>
+    <button class="btn btn-primary btn-sm" onclick="showEmailExport()">✉ Report</button>
   </div>
 </div>
 
@@ -311,7 +312,7 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
     <div class="modal-meta" id="email-modal-meta"></div>
     <div class="email-preview" id="email-preview"></div>
     <div class="modal-actions">
-      <button class="btn btn-primary" onclick="doExport()">Send — CSV + Report</button>
+      <button class="btn btn-primary" onclick="copyEmailText()">Copy — then paste into email</button>
       <button class="btn btn-secondary btn-sm" onclick="closeModal('email-modal')">Close</button>
     </div>
   </div>
@@ -668,6 +669,19 @@ function downloadCSV() {
   showToast('CSV downloaded ✓', 'green');
 }
 
+// ── COPY EMAIL TEXT ──
+function copyEmailText() {
+  const txt = buildEmailText();
+  navigator.clipboard.writeText(txt)
+    .then(() => showToast('Copied! Open your email app and paste ✓', 'green'))
+    .catch(() => {
+      const el = document.getElementById('email-preview');
+      const range = document.createRange(); range.selectNodeContents(el);
+      window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+      showToast('Text selected — copy it manually');
+    });
+}
+
 // ── UNIFIED EXPORT ──
 function doExport() {
   const title = eventTitle;
@@ -866,9 +880,9 @@ function showEmailExport() {
   const attended = registered.filter(a=>a.checkedIn).length + walkins.length;
   const noshows = registered.filter(a=>!a.checkedIn).length;
   const cancelCount = attendees.filter(a=>!a.walkIn && a.cancelled).length;
+  document.getElementById('email-preview').textContent = txt;
   document.getElementById('email-modal-meta').textContent =
     `${attended} attended · ${noshows} no-show${noshows!==1?'s':''} · ${walkins.length} walk-in${walkins.length!==1?'s':''} · ${cancelCount} cancellation${cancelCount!==1?'s':''}`;
-  document.getElementById('email-preview').textContent = txt;
   document.getElementById('email-modal').classList.add('open');
 }
 
