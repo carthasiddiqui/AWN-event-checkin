@@ -194,6 +194,7 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
     <div class="upload-hint">From Files, iCloud Drive, or email attachment</div>
   </div>
 
+  <button class="btn btn-secondary" onclick="showMerge()" style="margin-top:12px;">⇄ Get list from another device</button>
 
   <div class="instructions">
     <h3>How to export from Eventbrite</h3>
@@ -261,7 +262,7 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
     <button class="btn btn-green btn-sm" onclick="doMerge()" style="margin-top:10px;width:100%;max-width:none;">Merge into this list</button>
     <div class="merge-result" id="merge-result"></div>
   </div>
-  <button class="btn btn-secondary" onclick="showCheckin()">← Back to check-in</button>
+  <button class="btn btn-secondary" onclick="attendees.length > 0 ? showCheckin() : showScreen('upload-screen')">← Back</button>
 </div>
 
 <!-- DETAIL MODAL -->
@@ -727,7 +728,7 @@ function copyEmailText() {
 // ── MERGE ──
 function showMerge() {
   showScreen('merge-screen');
-  document.getElementById('export-code').textContent = buildExport();
+  document.getElementById('export-code').textContent = attendees.length > 0 ? buildExport() : '(no data on this device yet — import from another device below)';
 }
 
 function buildExport() {
@@ -789,6 +790,11 @@ function doMerge() {
 }
 
 // ── NAV ──
+function goToMerge() {
+  showScreen('merge-screen');
+  document.getElementById('export-code').textContent = attendees.length > 0 ? buildExport() : '(no data on this device yet)';
+}
+
 function showScreen(id) { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
 function showCheckin() { showScreen('checkin-screen'); renderList(); updateCounter(); }
 
