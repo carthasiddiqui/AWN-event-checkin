@@ -194,7 +194,6 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
     <div class="upload-hint">From Files, iCloud Drive, or email attachment</div>
   </div>
 
-  <button class="btn btn-secondary" onclick="loadDemo()">Try with sample data</button>
 
   <div class="instructions">
     <h3>How to export from Eventbrite</h3>
@@ -458,22 +457,6 @@ function processCSV(text, title) {
   showCheckin(); renderList(); updateCounter();
 }
 
-function loadDemo() {
-  const demo = `First Name,Last Name,Email,Order #,Ticket Type
-Alice,Johnson,alice@email.com,ORD-001,General Admission
-Bob,Smith,bob@email.com,ORD-002,VIP
-Carol,White,carol@email.com,ORD-003,General Admission
-David,Brown,david@email.com,ORD-004,General Admission
-Eva,Martinez,eva@email.com,ORD-005,Student
-Frank,Lee,frank@email.com,ORD-006,VIP
-Grace,Kim,grace@email.com,ORD-007,General Admission
-Henry,Davis,henry@email.com,ORD-008,General Admission
-Isabelle,Taylor,isa@email.com,ORD-009,Student
-James,Wilson,james@email.com,ORD-010,General Admission
-Karen,Moore,karen@email.com,ORD-011,VIP
-Liam,Anderson,liam@email.com,ORD-012,General Admission`;
-  processCSV(demo, 'Sample Event');
-}
 
 // ── RENDER ──
 function renderList() {
@@ -748,7 +731,7 @@ function showMerge() {
 }
 
 function buildExport() {
-  const data = attendees.map(a=>({id:a.id,name:a.name,ci:a.checkedIn,at:a.checkedAt,wi:a.walkIn,meta:a.meta}));
+  const data = attendees.map(a=>({id:a.id,name:a.name,ci:a.checkedIn,at:a.checkedAt,wi:a.walkIn,meta:a.meta,fields:a.fields||{},nm:a.nonMember||false,ca:a.cancelled||false}));
   return btoa(JSON.stringify(data));
 }
 
@@ -763,11 +746,35 @@ function doMerge() {
   if (!raw) { showToast('Paste an export code first'); return; }
   let imported;
   try { imported = JSON.parse(atob(raw)); } catch(e) { showToast('Invalid code — check you copied it all'); return; }
+
+  // If this device has no attendees loaded yet, bootstrap the full list from the import
+  if (attendees.length === 0) {
+    imported.forEach(item => {
+      if (item.wi) {
+        attendees.push({ id: nextWalkinId++, name: item.name, meta: item.meta||'', fields: item.meta?{'Note':item.meta}:{}, checkedIn: item.ci||false, checkedAt: item.at||null, walkIn: true, nonMember: false, cancelled: false });
+      } else {
+        attendees.push({ id: item.id||nextWalkinId++, name: item.name, meta: item.meta||'', fields: item.fields||{}, checkedIn: item.ci||false, checkedAt: item.at||null, walkIn: false, nonMember: item.nm||false, cancelled: item.ca||false });
+      }
+    });
+    if (attendees.length > 0) {
+      eventTitle = 'Merged Event';
+      document.getElementById('event-title').textContent = eventTitle;
+      const result = document.getElementById('merge-result');
+      result.style.display = 'block';
+      result.textContent = `List loaded from another device — ${attendees.length} attendees imported.`;
+      document.getElementById('import-input').value = '';
+      document.getElementById('export-code').textContent = buildExport();
+      updateCounter(); saveState();
+      showToast('List loaded from another device ✓', 'green');
+    }
+    return;
+  }
+
   let checkins = 0, newWalkins = 0;
   imported.forEach(item => {
     if (item.wi) {
       const exists = attendees.find(a=>a.walkIn && a.name.toLowerCase()===item.name.toLowerCase());
-      if (!exists) { attendees.push({ id: nextWalkinId++, name: item.name, meta: item.meta||'', fields: item.meta?{'Note':item.meta}:{}, checkedIn: true, checkedAt: item.at, walkIn: true }); newWalkins++; }
+      if (!exists) { attendees.push({ id: nextWalkinId++, name: item.name, meta: item.meta||'', fields: item.meta?{'Note':item.meta}:{}, checkedIn: true, checkedAt: item.at, walkIn: true, nonMember: false, cancelled: false }); newWalkins++; }
     } else {
       const match = attendees.find(a=>!a.walkIn && a.name.toLowerCase()===item.name.toLowerCase());
       if (match && !match.checkedIn && item.ci) { match.checkedIn=true; match.checkedAt=item.at; checkins++; }
