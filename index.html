@@ -241,7 +241,7 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
   <div class="bottom-bar">
     <button class="btn btn-gold btn-sm" onclick="showAddWalkin()">+ Walk-in</button>
     <button class="btn btn-secondary btn-sm" onclick="showMerge()">⇄ Merge</button>
-    <button class="btn btn-secondary btn-sm" onclick="downloadCSV()">⬇ CSV</button>
+    <button class="btn btn-green btn-sm" onclick="sendToTracker()">⬆ Tracker</button>
     <button class="btn btn-primary btn-sm" onclick="showEmailExport()">✉ Export</button>
   </div>
 </div>
@@ -643,6 +643,77 @@ function downloadCSV() {
   a.click();
   URL.revokeObjectURL(url);
   showToast('CSV downloaded ✓', 'green');
+}
+
+// ── SEND TO TRACKER ──
+function sendToTracker() {
+  const title = eventTitle;
+  const eventDate = new Date().toLocaleDateString([], {year:'numeric', month:'2-digit', day:'2-digit'});
+  const rows = [];
+
+  rows.push(['Event Name','Event Date','First Name','Last Name','Email','Status','AWN Member','Check-In Time']);
+
+  attendees.forEach(a => {
+    let status = '';
+    if (a.walkIn) status = 'Walk-in';
+    else if (a.cancelled) status = 'Late Cancellation';
+    else if (a.checkedIn) status = 'Attended';
+    else status = 'No-Show';
+
+    const nameParts = a.name.trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+    const email = (a.fields && a.fields['Email']) ? a.fields['Email'] : '';
+    const awnMember = a.walkIn ? '' : (a.nonMember ? 'Not AWN Member' : 'AWN Member');
+    const checkInTime = a.checkedAt ? fmtTime(a.checkedAt) : '';
+
+    rows.push([title, eventDate, firstName, lastName, email, status, awnMember, checkInTime]);
+  });
+
+  const csvContent = rows.map(row =>
+    row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+  ).join('\n');
+
+  // Create a data URI for the CSV and open mailto with it
+  // Since mailto can't attach files, we use a workaround:
+  // encode the CSV as a data URI and trigger a download first,
+  // then open mail so volunteer just attaches the downloaded file.
+  // Better: use the Web Share API if available (works on iOS Safari)
+  const blob = new Blob([csvContent], {type: 'text/csv'});
+  const fileName = `AWN_${title.replace(/\s+/g,'_')}_${eventDate.replace(/\//g,'-')}.csv`;
+
+  if (navigator.share && navigator.canShare) {
+    const file = new File([blob], fileName, {type: 'text/csv'});
+    if (navigator.canShare({files: [file]})) {
+      navigator.share({
+        files: [file],
+        title: 'AWN Check-In Data',
+        text: 'AWN check-in data for ' + title
+      }).then(() => showToast('Shared ✓', 'green'))
+        .catch(err => { if (err.name !== 'AbortError') fallbackSendToTracker(blob, fileName, csvContent); });
+      return;
+    }
+  }
+  fallbackSendToTracker(blob, fileName, csvContent);
+}
+
+function fallbackSendToTracker(blob, fileName, csvContent) {
+  // Download the file then open Mail pre-addressed
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  // Small delay then open Mail so file is downloaded first
+  setTimeout(() => {
+    const subject = encodeURIComponent('AWN Check-In Data');
+    const body = encodeURIComponent('Check-in data for ' + eventTitle + ' — please see attached CSV.');
+    window.location.href = `mailto:awneventtracking@gmail.com?subject=${subject}&body=${body}`;
+  }, 800);
+
+  showToast('File saved — attach it to the email that opens', 'green');
 }
 
 // ── EMAIL EXPORT ──
