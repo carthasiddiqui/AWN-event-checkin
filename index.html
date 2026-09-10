@@ -241,8 +241,7 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
   <div class="bottom-bar">
     <button class="btn btn-gold btn-sm" onclick="showAddWalkin()">+ Walk-in</button>
     <button class="btn btn-secondary btn-sm" onclick="showMerge()">⇄ Merge</button>
-    <button class="btn btn-green btn-sm" onclick="sendToTracker()">⬆ Tracker</button>
-    <button class="btn btn-primary btn-sm" onclick="showEmailExport()">✉ Export</button>
+    <button class="btn btn-primary btn-sm" onclick="doExport()">✉ Export</button>
   </div>
 </div>
 
@@ -301,7 +300,7 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
     <div class="modal-meta" id="email-modal-meta"></div>
     <div class="email-preview" id="email-preview"></div>
     <div class="modal-actions">
-      <button class="btn btn-primary" onclick="copyEmailText()">Copy — then paste into email</button>
+      <button class="btn btn-primary" onclick="doExport()">Send — CSV + Report</button>
       <button class="btn btn-secondary btn-sm" onclick="closeModal('email-modal')">Close</button>
     </div>
   </div>
@@ -643,6 +642,71 @@ function downloadCSV() {
   a.click();
   URL.revokeObjectURL(url);
   showToast('CSV downloaded ✓', 'green');
+}
+
+// ── UNIFIED EXPORT ──
+function doExport() {
+  const title = eventTitle;
+  const eventDate = new Date().toLocaleDateString([], {year:'numeric', month:'2-digit', day:'2-digit'});
+
+  // Build CSV
+  const rows = [];
+  rows.push(['Event Name','Event Date','First Name','Last Name','Email','Status','AWN Member','Check-In Time']);
+  attendees.forEach(a => {
+    let status = '';
+    if (a.walkIn) status = 'Walk-in';
+    else if (a.cancelled) status = 'Late Cancellation';
+    else if (a.checkedIn) status = 'Attended';
+    else status = 'No-Show';
+    const nameParts = a.name.trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+    const email = (a.fields && a.fields['Email']) ? a.fields['Email'] : '';
+    const awnMember = a.walkIn ? '' : (a.nonMember ? 'Not AWN Member' : 'AWN Member');
+    const checkInTime = a.checkedAt ? fmtTime(a.checkedAt) : '';
+    rows.push([title, eventDate, firstName, lastName, email, status, awnMember, checkInTime]);
+  });
+  const csvContent = rows.map(row =>
+    row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+  ).join('\n');
+
+  // Build text report
+  const emailText = buildEmailText();
+  const fileName = `AWN_${title.replace(/\s+/g,'_')}_${eventDate.replace(/\//g,'-')}.csv`;
+  const blob = new Blob([csvContent], {type: 'text/csv'});
+
+  // Body includes both addresses and the full text report
+  const bodyText = 'Please send to: TreasurerAWN@gmail.com and awneventtracking@gmail.com\n\n' + emailText;
+
+  // Try Web Share API with file attachment
+  if (navigator.share && navigator.canShare) {
+    const file = new File([blob], fileName, {type: 'text/csv'});
+    if (navigator.canShare({files: [file]})) {
+      navigator.share({
+        files: [file],
+        title: 'AWN Check-In: ' + title,
+        text: bodyText
+      }).then(() => showToast('Exported ✓', 'green'))
+        .catch(err => { if (err.name !== 'AbortError') fallbackExport(blob, fileName, bodyText, title); });
+      return;
+    }
+  }
+  fallbackExport(blob, fileName, bodyText, title);
+}
+
+function fallbackExport(blob, fileName, bodyText, title) {
+  // Download CSV
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName; a.click();
+  URL.revokeObjectURL(url);
+  // Open mail pre-filled
+  setTimeout(() => {
+    const subject = encodeURIComponent('AWN Check-In: ' + title);
+    const body = encodeURIComponent(bodyText);
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  }, 800);
+  showToast('File saved — attach it to the email that opens', 'green');
 }
 
 // ── SEND TO TRACKER ──
