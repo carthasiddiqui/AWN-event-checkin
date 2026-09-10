@@ -670,17 +670,7 @@ function downloadCSV() {
 }
 
 // ── COPY EMAIL TEXT ──
-function copyEmailText() {
-  const txt = buildEmailText();
-  navigator.clipboard.writeText(txt)
-    .then(() => showToast('Copied! Open your email app and paste ✓', 'green'))
-    .catch(() => {
-      const el = document.getElementById('email-preview');
-      const range = document.createRange(); range.selectNodeContents(el);
-      window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
-      showToast('Text selected — copy it manually');
-    });
-}
+
 
 // ── UNIFIED EXPORT ──
 function doExport() {
@@ -888,6 +878,52 @@ function showEmailExport() {
   document.getElementById('email-modal-meta').textContent =
     `${attended} attended · ${noshows} no-show${noshows!==1?'s':''} · ${walkins.length} walk-in${walkins.length!==1?'s':''} · ${cancelCount} cancellation${cancelCount!==1?'s':''}`;
   document.getElementById('email-modal').classList.add('open');
+}
+
+function reportStep1() {
+  const txt = buildEmailText();
+  navigator.clipboard.writeText(txt)
+    .then(() => showToast('Report copied ✓ — now tap ③ Send Email', 'green'))
+    .catch(() => { showEmailExport(); });
+}
+
+function reportStep2() {
+  const title = eventTitle;
+  const eventDate = new Date().toLocaleDateString([], {year:'numeric', month:'2-digit', day:'2-digit'});
+  const rows = [['Event Name','Event Date','First Name','Last Name','Email','Status','AWN Member','Check-In Time']];
+  attendees.forEach(a => {
+    let status = a.walkIn ? 'Walk-in' : a.cancelled ? 'Late Cancellation' : a.checkedIn ? 'Attended' : 'No-Show';
+    const nameParts = a.name.trim().split(' ');
+    const email = (a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || '')) || '';
+    const awnMember = a.walkIn ? '' : (a.nonMember ? 'Not AWN Member' : 'AWN Member');
+    rows.push([title, eventDate, nameParts[0]||'', nameParts.slice(1).join(' ')||'', email, status, awnMember, a.checkedAt ? fmtTime(a.checkedAt) : '']);
+  });
+  const csvContent = rows.map(r => r.map(c => '"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const fileName = 'AWN_'+title.replace(/\s+/g,'_')+'_'+eventDate.replace(/\//g,'-')+'.csv';
+  const blob = new Blob([csvContent], {type:'text/csv'});
+  if (navigator.share && navigator.canShare) {
+    const file = new File([blob], fileName, {type:'text/csv'});
+    if (navigator.canShare({files:[file]})) {
+      navigator.share({files:[file], title:'AWN Check-In: '+title})
+        .then(() => showToast('Paste the copied report into the email body', 'green'))
+        .catch(err => { if (err.name !== 'AbortError') fallbackStep2(blob, fileName, title); });
+      return;
+    }
+  }
+  fallbackStep2(blob, fileName, title);
+}
+
+function fallbackStep2(blob, fileName, title) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName; a.click();
+  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    const subject = encodeURIComponent('AWN Check-In Report: ' + title);
+    const body = encodeURIComponent('Paste the copied report here.');
+    window.location.href = 'mailto:TreasurerAWN@gmail.com,awneventtracking@gmail.com?subject='+subject+'&body='+body;
+  }, 800);
+  showToast('Paste the copied report into the email body', 'green');
 }
 
 function copyEmailText() {
