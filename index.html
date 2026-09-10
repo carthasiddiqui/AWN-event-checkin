@@ -252,8 +252,8 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
   <div class="bottom-bar">
     <button class="btn btn-gold btn-sm" onclick="showAddWalkin()">+ Walk-in</button>
     <button class="btn btn-secondary btn-sm" onclick="showMerge()">⇄ Merge</button>
-    <button class="btn btn-secondary btn-sm" onclick="downloadCSV()">⬇ CSV</button>
-    <button class="btn btn-primary btn-sm" onclick="showEmailExport()">✉ Report</button>
+    <button class="btn btn-secondary btn-sm" onclick="reportStep1()">① Copy Report</button>
+    <button class="btn btn-primary btn-sm" onclick="reportStep2()">② Send Email</button>
   </div>
 </div>
 
@@ -830,6 +830,7 @@ function buildEmailText() {
   const noshows    = registered.filter(a=>!a.checkedIn);
   const totalAttended = attended.length + walkins.length;
   let txt = '';
+  txt += `Please send to: TreasurerAWN@gmail.com\n\n`;
   txt += `EVENT CHECK-IN REPORT\n${'─'.repeat(32)}\n`;
   txt += `Event: ${title}\nGenerated: ${now}\n\n`;
   txt += `SUMMARY\n${'─'.repeat(32)}\n`;
@@ -842,14 +843,16 @@ function buildEmailText() {
   if (noshows.length === 0) txt += `Everyone showed up!\n`;
   else noshows.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
     txt += a.name;
-    if (a.fields['Email']) txt += `  <${a.fields['Email']}>`;
+    const em1 = a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || '');
+    if (em1) txt += `  <${em1}>`;
     txt += '\n';
   });
   txt += `\nATTENDED (${attended.length})\n${'─'.repeat(32)}\n`;
   if (attended.length === 0) txt += `None yet.\n`;
   else attended.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
     txt += a.name;
-    if (a.fields['Email']) txt += `  <${a.fields['Email']}>`;
+    const em2 = a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || '');
+    if (em2) txt += `  <${em2}>`;
     if (a.checkedAt) txt += `  ${fmtTime(a.checkedAt)}`;
     txt += '\n';
   });
@@ -866,7 +869,8 @@ function buildEmailText() {
     txt += `\nLATE CANCELLATIONS (${cancelled.length})\n${'─'.repeat(32)}\n`;
     cancelled.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
       txt += a.name;
-      if (a.fields['Email']) txt += `  <${a.fields['Email']}>`;
+      const em3 = a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || '');
+      if (em3) txt += `  <${em3}>`;
       txt += '\n';
     });
   }
