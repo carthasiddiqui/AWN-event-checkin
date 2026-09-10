@@ -676,7 +676,9 @@ function doExport() {
   const blob = new Blob([csvContent], {type: 'text/csv'});
 
   // Body includes both addresses and the full text report
-  const bodyText = 'Please send to: TreasurerAWN@gmail.com and awneventtracking@gmail.com\n\n' + emailText;
+  // Build body with proper line breaks — use \r\n for email clients
+  const header = 'Please send to: TreasurerAWN@gmail.com and awneventtracking@gmail.com';
+  const bodyText = header + '\r\n\r\n' + emailText.replace(/\n/g, '\r\n');
 
   // Try Web Share API with file attachment
   if (navigator.share && navigator.canShare) {
@@ -774,7 +776,7 @@ function fallbackSendToTracker(blob, fileName, csvContent) {
   // Small delay then open Mail so file is downloaded first
   setTimeout(() => {
     const subject = encodeURIComponent('AWN Check-In Data');
-    const body = encodeURIComponent('Please send to: awneventtracking@gmail.com\n\nCheck-in data for ' + eventTitle + ' — please see attached CSV.');
+    const body = encodeURIComponent('Please send to: awneventtracking@gmail.com\r\n\r\nCheck-in data for ' + eventTitle + ' — please see attached CSV.');
     window.location.href = `mailto:awneventtracking@gmail.com?subject=${subject}&body=${body}`;
   }, 800);
 
@@ -792,7 +794,6 @@ function buildEmailText() {
   const noshows    = registered.filter(a=>!a.checkedIn);
   const totalAttended = attended.length + walkins.length;
   let txt = '';
-  txt += `Please send to: TreasurerAWN@gmail.com\n\n`;
   txt += `EVENT CHECK-IN REPORT\n${'─'.repeat(32)}\n`;
   txt += `Event: ${title}\nGenerated: ${now}\n\n`;
   txt += `SUMMARY\n${'─'.repeat(32)}\n`;
