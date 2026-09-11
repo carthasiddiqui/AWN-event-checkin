@@ -902,7 +902,7 @@ function reportStep2() {
   if (navigator.share && navigator.canShare) {
     const file = new File([blob], fileName, {type:'text/csv'});
     if (navigator.canShare({files:[file]})) {
-      navigator.share({files:[file], title:'AWN Check-In: '+title})
+      navigator.share({files:[file], title:'AWN Check-In: '+title, text:'PASTE HERE'})
         .then(() => showToast('Paste the copied report into the email body', 'green'))
         .catch(err => { if (err.name !== 'AbortError') fallbackStep2(blob, fileName, title); });
       return;
