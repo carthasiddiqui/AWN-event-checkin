@@ -426,8 +426,9 @@ function parseCSV(text) {
   const nameIdx  = headers.findIndex(h => /^name$/i.test(h) || /attendee.name/i.test(h));
   const orderIdx = headers.findIndex(h => /order.*(#|num|id)/i.test(h) || /^order$/i.test(h));
   const ticketIdx= headers.findIndex(h => /ticket.type/i.test(h) || /ticket.name/i.test(h));
-  const emailIdx = headers.findIndex(h => /email/i.test(h));
-  const awnIdx   = headers.findIndex(h => /awn.member/i.test(h));
+  const emailIdx   = headers.findIndex(h => /email/i.test(h));
+  const awnIdx     = headers.findIndex(h => /awn.member/i.test(h));
+  const femaleIdx  = headers.findIndex(h => /female/i.test(h));
   const results = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = splitCSVLine(lines[i]);
@@ -446,6 +447,9 @@ function parseCSV(text) {
     if (fields['Order #']) metaParts.push('Order ' + fields['Order #']);
     const awnVal = awnIdx >= 0 ? (cols[awnIdx]||'').trim() : '';
     const nonMember = awnVal.toLowerCase().includes('not');
+    // Skip males — answer of "No" to the female-only question
+    const femaleVal = femaleIdx >= 0 ? (cols[femaleIdx]||'').trim().toLowerCase() : '';
+    if (femaleVal === 'no') continue;
     results.push({ id: i, name, meta: metaParts.join(' · '), fields, checkedIn: false, checkedAt: null, walkIn: false, nonMember, cancelled: false });
   }
   return results;
@@ -475,11 +479,31 @@ document.getElementById('csv-file-input').addEventListener('change', function(e)
 function processCSV(text, title) {
   const parsed = parseCSV(text);
   if (!parsed || parsed.length === 0) { showToast('Could not read that CSV. Try the Eventbrite Summary export.'); return; }
-  attendees = parsed;
+
+  // Count males removed (already filtered in parser — count gap between raw lines and parsed)
+  const rawLines = text.trim().split(/\r?\n/).length - 1; // subtract header
+  const malesRemoved = rawLines - parsed.length;
+
+  // Remove duplicates by email — keep first occurrence
+  const seen = new Set();
+  let dupsRemoved = 0;
+  attendees = parsed.filter(a => {
+    const key = (a.fields['Email'] || a.fields['email'] || '').toLowerCase().trim();
+    if (key && seen.has(key)) { dupsRemoved++; return false; }
+    if (key) seen.add(key);
+    return true;
+  });
+
   eventTitle = title;
   document.getElementById('event-title').textContent = title;
   saveState();
   showCheckin(); renderList(); updateCounter();
+
+  // Show load summary
+  let msg = attendees.length + ' attendees loaded.';
+  if (malesRemoved > 0) msg += ' ' + malesRemoved + ' male registration' + (malesRemoved !== 1 ? 's' : '') + ' removed.';
+  if (dupsRemoved > 0) msg += ' ' + dupsRemoved + ' duplicate' + (dupsRemoved !== 1 ? 's' : '') + ' removed.';
+  showToast(msg, 'green');
 }
 
 
