@@ -854,13 +854,30 @@ function buildEmailText() {
   txt += `\nDid not attend:      ${noshows.length}\n`;
   txt += `Late cancellations:  ${cancelled.length}\n\n`;
   txt += `DID NOT ATTEND (${noshows.length})\n${'─'.repeat(32)}\n`;
-  if (noshows.length === 0) txt += `Everyone showed up!\n`;
-  else noshows.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
-    txt += a.name;
-    const em1 = a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || '');
-    if (em1) txt += `  <${em1}>`;
-    txt += '\n';
-  });
+  if (noshows.length === 0) {
+    txt += `Everyone showed up!\n`;
+  } else {
+    const nsMember    = noshows.filter(a => !a.nonMember).sort((a,b)=>a.name.localeCompare(b.name));
+    const nsNonMember = noshows.filter(a =>  a.nonMember).sort((a,b)=>a.name.localeCompare(b.name));
+    if (nsMember.length > 0) {
+      txt += `Members (${nsMember.length}):\n`;
+      nsMember.forEach(a => {
+        txt += '  ' + a.name;
+        const em1 = a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || '');
+        if (em1) txt += `  <${em1}>`;
+        txt += '\n';
+      });
+    }
+    if (nsNonMember.length > 0) {
+      txt += `Non-Members (${nsNonMember.length}):\n`;
+      nsNonMember.forEach(a => {
+        txt += '  ' + a.name;
+        const em1b = a.fields && (a.fields['Email'] || a.fields['email'] || Object.values(a.fields).find(v => v && v.includes('@')) || '');
+        if (em1b) txt += `  <${em1b}>`;
+        txt += '\n';
+      });
+    }
+  }
   txt += `\nATTENDED (${attended.length})\n${'─'.repeat(32)}\n`;
   if (attended.length === 0) txt += `None yet.\n`;
   else attended.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => {
