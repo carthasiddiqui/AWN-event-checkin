@@ -220,6 +220,7 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
       <li>If the file picker doesn't work, <strong>add this page to your Home Screen</strong> first (banner above)</li>
     </ol>
     <p style="font-size:12px;color:var(--muted);margin-top:10px;font-style:italic;">For the technically savvy, you can do this from your phone by requesting the desktop version of the website.</p>
+    <p style="font-size:11px;color:var(--muted);margin-top:8px;">App version v2026.11.04-b</p>
   </div>
 </div>
 
@@ -274,6 +275,7 @@ h1 { font-family: 'DM Serif Display', serif; font-size: 30px; font-weight: 400; 
     <div class="merge-result" id="merge-result"></div>
   </div>
   <button class="btn btn-secondary" onclick="attendees.length > 0 ? showCheckin() : showScreen('upload-screen')">← Back</button>
+  <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:4px;">App version v2026.11.04-b</p>
 </div>
 
 <!-- DETAIL MODAL -->
@@ -984,9 +986,26 @@ function showMerge() {
   document.getElementById('export-code').textContent = attendees.length > 0 ? buildExport() : '(no data on this device yet — import from another device below)';
 }
 
+// Unicode-safe base64 (plain btoa/atob break on curly apostrophes, Arabic, emoji, etc.)
+function encodeUnicode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  bytes.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin);
+}
+function decodeUnicode(b64) {
+  const bin = atob(b64.replace(/\s+/g, ''));
+  const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
 function buildExport() {
-  const data = attendees.map(a=>({id:a.id,name:a.name,ci:a.checkedIn,at:a.checkedAt,wi:a.walkIn,meta:a.meta,fields:a.fields||{},nm:a.nonMember||false,ca:a.cancelled||false}));
-  return btoa(JSON.stringify(data));
+  try {
+    const data = attendees.map(a=>({id:a.id,name:a.name,ci:a.checkedIn,at:a.checkedAt,wi:a.walkIn,meta:a.meta,fields:a.fields||{},nm:a.nonMember||false,ca:a.cancelled||false}));
+    return encodeUnicode(JSON.stringify(data));
+  } catch(e) {
+    return 'Error creating code: ' + e.message;
+  }
 }
 
 function copyExport() {
@@ -999,7 +1018,7 @@ function doMerge() {
   const raw = document.getElementById('import-input').value.trim();
   if (!raw) { showToast('Paste an export code first'); return; }
   let imported;
-  try { imported = JSON.parse(atob(raw)); } catch(e) { showToast('Invalid code — check you copied it all'); return; }
+  try { imported = JSON.parse(decodeUnicode(raw)); } catch(e) { showToast('Invalid code — check you copied it all'); return; }
 
   // If this device has no attendees loaded yet, bootstrap the full list from the import
   if (attendees.length === 0) {
