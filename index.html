@@ -490,7 +490,11 @@ function processCSV(text, title) {
   const seen = new Set();
   let dupsRemoved = 0;
   attendees = parsed.filter(a => {
-    const key = (a.fields['Email'] || a.fields['email'] || '').toLowerCase().trim();
+    const em = (a.fields['Email'] || a.fields['email'] || '').toLowerCase().trim();
+    // Only a duplicate if BOTH the email and the full name match
+    // (friends registered under someone else's email have different names, so they are kept)
+    const nm = a.name.toLowerCase().replace(/\s+/g, ' ').trim();
+    const key = em ? em + '|' + nm : '';
     if (key && seen.has(key)) { dupsRemoved++; return false; }
     if (key) seen.add(key);
     return true;
